@@ -1,0 +1,190 @@
+#include "utils.h"
+
+void login_init(QDialog *&cur_dialog, hint_set &cur_hint, int type) {
+    cur_hint.type = type;
+    if(type == 0) {
+        cur_hint.role = "管理员";
+        cur_hint.list_name = "adminlist.txt";
+        cur_hint.leave_hint = "进入管理界面";
+    }
+    else {
+        cur_hint.role = "用户";
+        cur_hint.list_name = "userlist.txt";
+        cur_hint.leave_hint = "进入购物";
+    }
+    cur_dialog->setWindowTitle(cur_hint.role + "登录");
+    QLabel *id_label = new QLabel(cur_hint.role + "名：");
+    QLabel *pw_label = new QLabel("密码：");
+    QLineEdit *id_edit = new QLineEdit;
+    QLineEdit *pw_edit = new QLineEdit;
+    id_edit->setPlaceholderText("请输入" + cur_hint.role + "名");
+    pw_edit->setPlaceholderText("请输入" + cur_hint.role + "密码");
+    QPushButton *login_button = new QPushButton("登录");
+    QGridLayout *login_layout = new QGridLayout;
+    login_layout->addWidget(id_label, 0, 0, 1, 1);
+    login_layout->addWidget(id_edit, 0, 1, 1, 2);
+    login_layout->addWidget(pw_label, 1, 0, 1, 1);
+    login_layout->addWidget(pw_edit, 1, 1, 1, 2);
+    login_layout->addWidget(login_button, 2, 1, 1, 1);
+    cur_dialog->setLayout(login_layout);
+    cur_dialog->connect(login_button, &QPushButton::clicked, [=]{
+        login_check(cur_dialog, id_edit->text(), pw_edit->text(), uid);
+    });
+}
+
+void login_check(QDialog *&cur_dialog, QString id_str, QString pw_str, hint_set &cur_hint) {
+    QFile list_file(cur_hint.list_name);
+    list_file.open(QIODevice::ReadOnly | QIODevice::Text);
+    QTextStream list_stream(&list_file);
+    bool login_succ = false;
+    while(!list_stream.atEnd()) {
+        QString id_read, pw_read;
+        list_stream >> id_read >> pw_read;
+        if(id_read == id_str && pw_read == pw_str) {
+            login_succ = true;
+            break;
+        }
+    }
+    list_file.close();
+    if(login_succ) {
+        QMessageBox::information(cur_dialog, "登录成功", cur_hint.leave_hint);
+        cur_hint.id = id_str;
+        cur_dialog->accept();
+        file_read();
+    }
+    else
+        QMessageBox::information(cur_dialog, "登录失败", "返回登录界面");
+}
+
+void file_read(QVector<commodity> &cart_or_sold, QVector<commodity> &ivtr, QString *uid, int &search_pos) {
+    QString first_name, button_name;
+    if(uid != nullptr) {
+        first_name = (*uid) + ".txt";
+        button_name = "查看购物车";
+    }
+    else {
+        first_name = "sold.txt";
+        button_name = "已售商品";
+    }
+    QFile rec_file(first_name);
+    if(rec_file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream rec_file_stream(&rec_file);
+        while(!rec_file_stream.atEnd()) {
+            commodity tmp_cmdt;
+            rec_file_stream >> tmp_cmdt.id >> tmp_cmdt.name >> tmp_cmdt.brand
+                    >> tmp_cmdt.price >> tmp_cmdt.num;
+            if(uid == nullptr)
+                rec_file_stream >> tmp_cmdt.uname;
+            if(tmp_cmdt.num > 0)
+                cart_or_sold.push_back(tmp_cmdt);
+        }
+        rec_file.close();
+    }
+    rec_file.setFileName("inventory.txt");
+    if(rec_file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream rec_file_stream(&rec_file);
+        while(!rec_file_stream.atEnd()) {
+            commodity tmp_cmdt;
+            rec_file_stream >> tmp_cmdt.id >> tmp_cmdt.name >> tmp_cmdt.brand
+                    >> tmp_cmdt.price >> tmp_cmdt.num;
+            if(tmp_cmdt.num > 0)
+                ivtr.push_back(tmp_cmdt);
+        }
+        rec_file.close();
+    }
+    if(uid != nullptr)
+        first_name = (*uid);
+    else
+        first_name = "管理员";
+    QPushButton *ivtr_button = new QPushButton("查看商品");
+    QPushButton *cos_button = new QPushButton(button_name);
+    QHBoxLayout *cur_layout = new QHBoxLayout;
+    cur_layout->addWidget(ivtr_button);
+    cur_layout->addWidget(cos_button);
+    QDialog *cur_dialog = new QDialog;
+    cur_dialog->setWindowTitle(first_name);
+    cur_dialog->setWindowFlags(Qt::MSWindowsFixedSizeDialogHint);
+    cur_dialog->setLayout(ulayout);
+    cur_dialog->setMinimumWidth(400);
+    int mode = 0;
+    if(uid == nullptr)
+        mode = 2;
+    cur_dialog->connect(ivtr_button, &QPushButton::clicked, [=]{
+        table_display(ivtr, cart_or_sold, search_pos, mode);
+    });
+    cur_dialog->connect(cos_button, &QPushButton::clicked, [=]{
+        mode++;
+        table_display(ivtr, cart_or_sold, search_pos, mode);
+    });
+    cur_dialog->connect(cur_dialog, &QDialog::rejected, [=]{
+        if(uid != nullptr)
+            file_save(cart_or_sold, uid);
+        else
+            file_save(ivtr, nullptr);
+    });
+    cur_dialog->exec();
+}
+
+void file_save(QVector<commodity> &src, QString *uid) {
+    QString file_name;
+    if(uid != nullptr)
+        file_name = (*uid) + ".txt";
+    else
+        file_name = "inventory.txt";
+    QFile cur_file(file_name);
+    cur_file.open(QIODevice::WriteOnly | QIODevice::Text);
+    QTextStream cur_stream(&cur_file);
+    for(int i = 0; i < src.size(); i++) {
+        cur_stream << src[i].id << ' ' << src[i].name << ' ' << src[i].brand << ' '
+                     << src[i].price << ' ' << src[i].num;
+        if(i < src.size() - 1)
+            cur_stream << '\n';
+    }
+    cur_file.close();
+}
+
+void table_display(QVector<commodity> &arg1, QVector<commodity> &arg2, int &search_pos, int mode) {
+    search_pos = -1;
+    QVector<commodity> &src = (mode == 0 || mode == 2) ? arg1 : arg2;
+    QVector<commodity> &dst = (mode == 0 || mode == 2) ? arg2 : arg1;
+    QString action_str, title_str, hint_str;
+    if(mode == 0) {
+        action_str = "购买";
+        title_str = "库存清单";
+        hint_str = "请选择购买数量";
+    }
+    else if(mode == 1){
+        action_str = "移除";
+        title_str = "购物车";
+        hint_str = "请选择移除数量";
+    }
+    int tb_row = src.size() + 1;
+    int tb_col = 5;
+    if(mode == 3)
+        tb_col = 6;
+    utable_widget = new QTableWidget(tb_row - 1, tb_col);
+    utable_item = new QTableWidgetItem**[tb_row];
+    for(int i = 0; i < tb_row; i++)
+        utable_item[i] = new QTableWidgetItem*[tb_col];
+    for(int i = 0; i < tb_col; i++) {
+        utable_item[0][i] = new QTableWidgetItem(attr_str[i]);
+        utable_widget->setHorizontalHeaderItem(i, utable_item[0][i]);
+    }
+    for(int i = 1; i < tb_row; i++) {
+        utable_item[i][0] = new QTableWidgetItem(src[i - 1].id);
+        utable_item[i][1] = new QTableWidgetItem(src[i - 1].name);
+        utable_item[i][2] = new QTableWidgetItem(src[i - 1].brand);
+        utable_item[i][3] = new QTableWidgetItem(QString::number(src[i - 1].price));
+        utable_item[i][4] = new QTableWidgetItem(QString::number(src[i - 1].num));
+        if(mode == 3)
+            utable
+    }
+    for(int i = 1; i < tb_row; i++) {
+        for(int j = 0; j < 5; j++) {
+            utable_item[i][j]->setTextAlignment(Qt::AlignCenter);
+            utable_widget->setItem(i - 1, j, utable_item[i][j]);
+        }
+    }
+    utable_widget->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    utable_widget->setSelectionBehavior(QAbstractItemView::SelectRows);
+}
